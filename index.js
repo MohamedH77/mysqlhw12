@@ -1,63 +1,67 @@
-require('dotenv').config();
-const mysql = require('mysql2');
-const inquirer = require('inquirer');
+const mysql = require("mysql2/promise");
+const inquirer = require("inquirer");
+require("dotenv");
+
 
 const connection = mysql.createPool({
-  host: 'localhost',
+  host: "localhost",
   user: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
 });
+
 
 async function mainMenu() {
   const { action } = await inquirer.prompt({
-    type: 'rawlist',
-    name: 'action',
-    message: 'What would you like to do?',
+    type: "rawlist",
+    name: "action",
+    message: "What would you like to do?",
     choices: [
-      { name: 'View all departments', value: 'view_departments' },
-      { name: 'View all roles', value: 'view_roles' },
-      { name: 'View all employees', value: 'view_employees' },
-      { name: 'Add a department', value: 'add_department' },
-      { name: 'Add a role', value: 'add_role' },
-      { name: 'Add an employee', value: 'add_employee' },
-      { name: 'Update an employee role', value: 'update_employee' },
-      { name: 'Exit', value: 'exit' }
-    ]
+      { name: "View all departments", value: "view_departments" },
+      { name: "View all roles", value: "view_roles" },
+      { name: "View all employees", value: "view_employees" },
+      { name: "Add a department", value: "add_department" },
+      { name: "Add a role", value: "add_role" },
+      { name: "Add an employee", value: "add_employee" },
+      { name: "Update an employee role", value: "update_employee" },
+      { name: "Exit", value: "exit" },
+    ],
   });
 
   switch (action) {
-    case 'view_departments':
+    case "view_departments":
       await viewAllDepartments();
       break;
-    case 'view_roles':
+    case "view_roles":
       await viewAllRoles();
       break;
-    case 'view_employees':
+    case "view_employees":
       await viewAllEmployees();
       break;
-    case 'add_department':
+    case "add_department":
       await addDepartment();
       break;
-    case 'add_role':
+    case "add_role":
       await addRole();
       break;
-    case 'add_employee':
+    case "add_employee":
       await addEmployee();
       break;
-    case 'update_employee':
+    case "update_employee":
       await updateEmployeeRole();
       break;
-    case 'exit':
-      console.log('Exiting the application');
+    case "exit":
+      console.log("Exiting the application");
       connection.end();
       process.exit(0);
   }
 }
 
 async function viewAllDepartments() {
-  const [rows] = await connection.query('SELECT id AS `Department ID`, name AS `Department Name` FROM departments');
-  console.log('\n');
+  const [rows] = await connection.query(
+    "SELECT id AS `Department ID`, name AS `Department Name` FROM departments"
+  );
+  console.log("\n");
   console.table(rows);
   await mainMenu();
 }
@@ -68,7 +72,7 @@ async function viewAllRoles() {
     FROM roles
     INNER JOIN departments ON roles.department_id = departments.id
   `);
-  console.log('\n');
+  console.log("\n");
   console.table(rows);
   await mainMenu();
 }
@@ -83,7 +87,7 @@ async function viewAllEmployees() {
     INNER JOIN departments ON roles.department_id = departments.id
     LEFT JOIN employees AS managers ON employees.manager_id = managers.id
   `);
-  console.log('\n');
+  console.log("\n");
   console.table(rows);
   await mainMenu();
 }
@@ -107,5 +111,6 @@ async function addDepartment() {
     console.error(`Error adding department: ${error.message}\n`);
     await mainMenu();
   }
-};
+}
 
+mainMenu();
