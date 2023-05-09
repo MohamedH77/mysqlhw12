@@ -1,23 +1,25 @@
-const mysql = require("mysql2");
+const mysql = require("mysql2/promise");
 const inquirer = require("inquirer");
 require("dotenv").config();
 
-
-const connection = mysql.createConnection({
-  host: "localhost",
+const pool = mysql.createPool({
+  connectionLimit: 10,
+  host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  waitForConnections: true,
+  queueLimit: 0,
 });
 
-function mainMenu() {
-  inquirer.prompt({
-    type: "rawlist",
+async function mainMenu() {
+  const { action } = await inquirer.prompt({
+    type: "list",
     name: "action",
     message: "What would you like to do?",
     choices: [
       { name: "View all departments", value: "view_departments" },
-      { name: "View all roles", value: "view_roles" },
+      { name: "View all role", value: "view_roles" },
       { name: "View all employees", value: "view_employees" },
       { name: "Add a department", value: "add_department" },
       { name: "Add a role", value: "add_role" },
@@ -25,129 +27,169 @@ function mainMenu() {
       { name: "Update an employee role", value: "update_employee" },
       { name: "Exit", value: "exit" },
     ],
-  }, function(err, { action }) {
-
-    if (err) {
-      console.error(`Error: ${err.message}\n`);
-      return;
-    }
-
-    switch (action) {
-      case "view_departments":
-        viewAllDepartments();
-        break;
-      case "view_roles":
-        viewAllRoles();
-        break;
-      case "view_employees":
-        viewAllEmployees();
-        break;
-      case "add_department":
-        addDepartment();
-        break;
-      case "add_role":
-        addRole();
-        break;
-      case "add_employee":
-        addEmployee();
-        break;
-      case "update_employee":
-        updateEmployeeRole();
-        break;
-      case "exit":
-        console.log("Exiting the application");
-        connection.end();
-        process.exit(0);
-    }
   });
+
+  switch (action) {
+    case "view_departments":
+      await viewAllDepartments();
+      break;
+    case "view_roles":
+      await viewAllRoles();
+      break;
+    case "view_employees":
+      await viewAllEmployees();
+      break;
+    case "add_department":
+      await addDepartment();
+      break;
+    case "add_role":
+      await addRole();
+      break;
+    case "add_employee":
+      await addEmployee();
+      break;
+    case "update_employee":
+      await updateEmployeeRole();
+      break;
+    case "exit":
+      console.log("Exiting the application");
+      pool.end();
+      process.exit(0);
+  }
 }
 
-function viewAllDepartments() {
-  connection.query(
-    "SELECT id AS `Department ID`, name AS `Department Name` FROM departments",
-    function(err, [rows]) {
-      if (err) {
-        console.error(`Error: ${err.message}\n`);
-        mainMenu();
-        return;
-      }
-      console.log("\n");
-      console.table(rows);
-      mainMenu();
-    }
+async function viewAllDepartments() {
+  const [rows] = await pool.execute(
+    "SELECT id AS `department id`, name AS `department name` FROM department"
   );
+  console.log("\n");
+  console.table(rows);
+  mainMenu();
 }
 
-function viewAllRoles() {
-  connection.query(
+async function viewAllRoles() {
+  const [rows] = await pool.execute(
     `
-    SELECT roles.id AS 'Role ID', roles.title AS 'Job Title', departments.name AS 'Department', roles.salary AS 'Salary'
-    FROM roles
-    INNER JOIN departments ON roles.department_id = departments.id
-  `,
-    function(err, [rows]) {
-      if (err) {
-        console.error(`Error: ${err.message}\n`);
-        mainMenu();
-        return;
-      }
-      console.log("\n");
-      console.table(rows);
-      mainMenu();
-    }
+    SELECT role.id AS 'Role ID', role.title AS 'Job Title', department.name AS 'Department', role.salary AS 'Salary'
+    FROM role
+    INNER JOIN department ON role.department_id = department.id
+  `
   );
+  console.log("\n");
+  console.table(rows);
+  mainMenu();
 }
 
-function viewAllEmployees() {
-  connection.query(
+async function viewAllEmployees() {
+  const [rows] = await pool.execute(
     `
-    SELECT employees.id AS 'Employee ID', employees.first_name AS 'First Name', employees.last_name AS 'Last Name',
-    roles.title AS 'Job Title', departments.name AS 'Department', roles.salary AS 'Salary',
-    CONCAT(managers.first_name, ' ', managers.last_name) AS 'Manager'
-    FROM employees
-    INNER JOIN roles ON employees.role_id = roles.id
-    INNER JOIN departments ON roles.department_id = departments.id
-    LEFT JOIN employees AS managers ON employees.manager_id = managers.id
-  `,
-    function (err, [rows]) {
-      if (err) {
-        console.error(`Error: ${err.message}\n`);
-        mainMenu();
-        return;
-      }
-      console.log("\n");
-      console.table(rows);
-      mainMenu();
-    }
+    SELECT employee.id AS 'Employee ID', employee.first_name AS 'First Name', employee.last_name AS 'Last Name',
+    role.title AS 'Job Title', department.name AS 'Department', role.salary AS 'Salary',
+    CONCAT(manager.first_name, ' ', manager.last_name) AS 'Manager'
+    FROM employee
+    INNER JOIN role ON employee.role_id = role.id
+    INNER JOIN department ON role.department_id = department.id
+    LEFT JOIN employee AS manager ON employee.manager_id = manager.id
+  `
   );
+  console.log("\n");
+  console.table(rows);
+  mainMenu();
+}
+async function updateEmployeeRole() {
+  try {
+    const answers = await inquirer.prompt([
+      {
+        type: "input",
+        name: "employeeId",
+        message: "Enter the ID of the employee you want to update:",
+      },
+      {
+        type: "input",
+        name: "roleId",
+        message: "Enter the ID of the new role for the employee:",
+      },
+    ]);
+
+    const employeeId = answers.employeeId;
+    const roleId = answers.roleId;
+
+    const [rows] = await pool.execute(
+      "UPDATE employee SET role_id = ? WHERE id = ?",
+      [roleId, employeeId]
+    );
+
+    console.log(`Updated ${rows.affectedRows} row(s)\n`);
+    mainMenu();
+  } catch (error) {
+    console.error(`Error: ${error.message}\n`);
+    mainMenu();
+  }
+}
+
+async function addRole() {
+  try {
+    const departments = await pool.execute("SELECT * FROM department");
+
+    const answers = await inquirer.prompt([
+      {
+        type: "input",
+        name: "title",
+        message: "Enter the title of the new role:",
+      },
+      {
+        type: "number",
+        name: "salary",
+        message: "Enter the salary of the new role:",
+      },
+      {
+        type: "list",
+        name: "department_id",
+        message: "Select the department for the new role:",
+        choices: departments[0].map((department) => ({
+          name: department.name,
+          value: department.id,
+        })),
+      },
+    ]);
+
+    const { title, salary, department_id } = answers;
+
+    const [rows] = await pool.execute(
+      "INSERT INTO role (title, salary, department_id) VALUES (?, ?, ?)",
+      [title, salary, department_id]
+    );
+
+    console.log(`Added ${rows.affectedRows} row(s)\n`);
+    mainMenu();
+  } catch (error) {
+    console.error(`Error: ${error.message}\n`);
+    mainMenu();
+  }
 }
 
 async function addDepartment() {
-  inquirer
-    .prompt({
+  try {
+    const answers = await inquirer.prompt({
       type: "input",
       name: "name",
-      message: "Enter the department name:",
-      validate: (value) => (value ? true : "Please enter the department name."),
-    })
-    .then((answer) => {
-      connection.query(
-        "INSERT INTO departments (name) VALUES (?)",
-        [answer.name],
-        (error, results) => {
-          if (error) {
-            console.error(`Error adding department: ${error.message}\n`);
-          } else {
-            console.log(`Added department ${answer.name} successfully!\n`);
-          }
-          mainMenu();
-        }
-      );
-    })
-    .catch((error) => {
-      console.error(`Error adding department: ${error.message}\n`);
-      mainMenu();
+      message: "Enter the name of the new department:",
     });
+
+    const { name } = answers;
+
+    const [rows] = await pool.execute(
+      "INSERT INTO department (name) VALUES (?)",
+      [name]
+    );
+
+    console.log(`Added ${rows.affectedRows} row(s)\n`);
+    mainMenu();
+  } catch (error) {
+    console.error(`Error: ${error.message}\n`);
+    mainMenu();
+  }
 }
+
 
 mainMenu();
