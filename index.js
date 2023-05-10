@@ -96,6 +96,8 @@ async function viewAllEmployees() {
   console.table(rows);
   mainMenu();
 }
+
+
 async function updateEmployeeRole() {
   try {
     const answers = await inquirer.prompt([
@@ -168,6 +170,8 @@ async function addRole() {
   }
 }
 
+
+
 async function addDepartment() {
   try {
     const answers = await inquirer.prompt({
@@ -190,6 +194,61 @@ async function addDepartment() {
     mainMenu();
   }
 }
+
+
+async function addEmployee() {
+  try {
+    const roles = await pool.execute("SELECT * FROM role");
+    const employees = await pool.execute("SELECT * FROM employee");
+
+    const answers = await inquirer.prompt([
+      {
+        type: "input",
+        name: "first_name",
+        message: "Enter the first name of the employee:",
+      },
+      {
+        type: "input",
+        name: "last_name",
+        message: "Enter the last name of the employee:",
+      },
+      {
+        type: "list",
+        name: "role_id",
+        message: "Select the role for the employee:",
+        choices: roles[0].map((role) => ({
+          name: role.title,
+          value: role.id,
+        })),
+      },
+      {
+        type: "list",
+        name: "manager_id",
+        message: "Select the manager for the employee:",
+        choices: [{ name: "None", value: null }].concat(
+          employees[0].map((employee) => ({
+            name: `${employee.first_name} ${employee.last_name}`,
+            value: employee.id,
+          }))
+        ),
+      },
+    ]);
+
+    const { first_name, last_name, role_id, manager_id } = answers;
+
+    const [rows] = await pool.execute(
+      "INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES (?, ?, ?, ?)",
+      [first_name, last_name, role_id, manager_id]
+    );
+
+    console.log(`Added ${rows.affectedRows} row(s)\n`);
+    mainMenu();
+  } catch (error) {
+    console.error(`Error: ${error.message}\n`);
+    mainMenu();
+  }
+}
+
 
 
 mainMenu();
